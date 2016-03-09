@@ -15,6 +15,7 @@ It can be used for example to identify defects in crystal structures or molecule
 The only file required is "polypy", simply download it or clone this repository.
 
 ## Example use
-    polypy filename.xyz                                       *use default settings*
-    polypy -s -d0 --pbc "15.0 21.0 12.0" filename.xyz         *print simplified info file, (d0) search until inifinite depth, and use periodic boundary conditions*
+    polypy file.xyz                                 *use default settings*
+    polypy -s -d0 --pbc "15.0 21.0 12.0" file.xyz   *simplified info file, (d0) inifinite depth search, and periodic boundary conditions*
+    polypy -h                                       *print standard help*
     
