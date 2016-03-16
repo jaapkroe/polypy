@@ -1,6 +1,6 @@
 #!/usr/bin/python
-polypy_version=1.414
-import sys, os, re, time, string, argparse
+polypy_version=1.415
+import sys, os, re, time, string, argparse, math, itertools
 from copy import copy
 ''' polypy -- python program to calculate rings in a graph, using Franzblau statistics
     (Phys. Rev. B, vol 44, 4925 (1991): D.S. Franzblau, "Computation of ring statistics for network models of solid")
@@ -33,6 +33,7 @@ Options include
 - searching for rings, 
 - searching for chains, 
 - printing the coordination of each atom, 
+- calculating improper dihedrals of atoms with more than 3 neighbors, 
 - writing an output marked according to ringsize of coordination, 
 - writing simple output for large multi-framed files
 ''')
@@ -44,6 +45,7 @@ parser.add_argument("-g", "--cluster_rings", dest="clusterbool", action="store_t
 parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (ring-size), 2 (chains), 3 (coordination)")
 parser.add_argument("-b", "--pbc", action="store_true", help="use periodic boundary conditions, cell size on 2nd line of xyz-file as Lx Ly Lz")
 parser.add_argument("-l", "--ringbool", action="store_false", help="switch on/off: search for rings/loops (default=true)")
+parser.add_argument("-p", "--impropbool", action="store_true", help="calculate improper angles of atoms with more than 3 neighbors (default=false)")
 parser.add_argument("-f", "--floodfill", action="store_true", help="find disconnected subgraphs (default=false)")
 parser.add_argument("-o", "--origin", type=int, default=-1, help="find neighbor-shells of atom i (disabled if < 0)")
 parser.add_argument("-i", "--info", action="store_false", help="write nfo file (default=true)")
@@ -79,6 +81,7 @@ def main():
       nfo_file.write("#frame 0n   1n   2n   3n   4n")
       dstrings = d if d>2 else 10
       for m in range(3,dstrings+1): nfo_file.write(" %3ir" % int(m))
+      nfo_file.write("   2n6r")
       if args.chainbool: nfo_file.write("  nc  lc")
       nfo_file.write("\n")
   
@@ -98,6 +101,7 @@ def main():
     if args.chainbool: g.find_chains()                # find chains 
     if args.clusterbool: g.find_clusters()            # cluster rings
     if args.floodfill: g.floodfill()                  # find connected subgraphs
+    if args.impropbool: g.improp(args.pbc)
 
     if args.mark:
       if args.mark==1: g.mark_neighbors()             # mark atoms of different coordination by atom type
@@ -151,6 +155,7 @@ class graph:
     g.chains = []
     g.rings = [] 
     g.path = []
+    g.improper = []
     g.progress = progress
 
   def connect_sparse(g, max_radius, pbc):
@@ -491,6 +496,68 @@ class graph:
         start = [v for v in g.vertices if v.ingraph]
       if g.progress: g.progress.updatefinal("floodfill (%d/%d)"%(nremoved,g.size))
  
+  def improp(g,pbc):
+    if g.progress: g.progress.updateinitial("improper",'I')
+    # calculate the improper dihedral angle (ijkl)
+    # with the vertex as the central atom (i)
+    SMALL = 0.001
+    nimprop = 0
+    for v in g.vertices:
+      if v.nn > 2:  
+        # run over all planes for central vertex v spanned by 3 neighbors
+        theta = []
+        i = v
+        for plane in itertools.combinations(range(v.nn),3):
+          pneighs = v.neighbors[plane[0]],v.neighbors[plane[1]],v.neighbors[plane[2]]
+          ptheta = []
+          for n in range(3):
+            # left shift of neighbor tuple
+            nid = list(itertools.islice(itertools.cycle(plane), n, len(plane)+n))
+            j = v.neighbors[nid[0]]
+            k = v.neighbors[nid[1]]
+            l = v.neighbors[nid[2]]
+
+            rij = [a_i - b_i for a_i, b_i in zip(i.pos, j.pos)]
+            rkj = [a_i - b_i for a_i, b_i in zip(k.pos, j.pos)]
+            rlk = [a_i - b_i for a_i, b_i in zip(l.pos, k.pos)]
+
+            if pbc:
+              rij = minimum_image(rij,g.box)
+              rkj = minimum_image(rkj,g.box)
+              rlk = minimum_image(rlk,g.box)
+            
+            Rij = math.sqrt(sum([p*q for p,q in zip (rij,rij)]))
+            Rkj = math.sqrt(sum([p*q for p,q in zip (rkj,rkj)]))
+            Rlk = math.sqrt(sum([p*q for p,q in zip (rlk,rlk)]))
+
+            c0 = (rij[0] * rlk[0] + rij[1] * rlk[1] + rij[2] * rlk[2]) / Rij / Rlk
+            c1 = (rij[0] * rkj[0] + rij[1] * rkj[1] + rij[2] * rkj[2]) / Rij / Rkj
+            c2 = -(rlk[0] * rkj[0] + rlk[1] * rkj[1] + rlk[2] * rkj[2]) / Rlk / Rkj
+
+            s1 = 1.0 - c1*c1
+            if s1 < SMALL: s1 = SMALL
+            s1 = 1.0 / s1
+
+            s2 = 1.0 - c2*c2
+            if s2 < SMALL: s2 = SMALL
+            s2 = 1.0 / s2
+
+            s12 = math.sqrt(s1*s2)
+            c = (c1*c2 + c0) * s12
+
+            if c > 1.0: c = 1.0
+            if c < -1.0: c = -1.0
+            ptheta.append(180.0*math.acos(c)/math.pi)
+          theta.append([pneighs,ptheta])
+        # store central vertex, neighbor vertices and 
+        # theta of planes spanned by all neighboring vertices
+        g.improper.append([i,theta])
+      if g.progress:
+        nimprop += 1
+        if nimprop % int(g.size/.100+1)==0: 
+          g.progress.update(nimprop/g.size,"improper (%d/%d)"%(nimprop,g.size))
+    if g.progress: g.progress.updatefinal("improper (%d/%d)"%(nimprop,g.size))
+ 
   def search_from_origin(g,v,max_depth):
     # breadth-first-search (BFS) 
     Q = []
@@ -652,6 +719,22 @@ class graph:
           f.write("%d "%j.id)
         f.write("]\n")
       f.write('\n')
+      
+    if options.impropbool:
+      f.write('{central element (j)} [plane elements] (theta_ijkl,theta_kjli,theta_ljik) <theta>:\n')
+      for v,pl in g.improper:
+        for npl,theta in pl:
+          f.write("{%s} ["%v.id)
+          for np in npl:
+            f.write("%s "%np.id)
+          f.write("] (")
+          mtheta = 0.0
+          for ptheta in theta:
+            mtheta += ptheta
+            f.write("%.2f "%ptheta)
+          mtheta /= len(theta)
+          f.write(") %.2f\n"%mtheta)
+      f.write("\n")
 
     # list of elements with number of neighbors
     f.write('{element} #neighbors [neighbor list]\n')
@@ -676,10 +759,22 @@ class graph:
     rsl = [len(l) for l in rl] 
     # element neighbor list
     enl = [v.nn for v in g.vertices]
-
+    
+    # get elements with only 2 neighbors which are in a ring 
+    # (they are not sp, they are sp2) 
+    n2r6 = []
+    for v in g.vertices:
+      if v.nn == 2:
+        #check if atom is in 6r
+        for l in rl:
+          if v.id in l and len(l) == 6:
+            n2r6.append(v.id) 
+    
     for i in range(0,5): f.write("%-4d" % enl.count(i)+' ') # 0n,1n,2n,3n,4n
     if not max_depth : max_depth = max(rsl)
     for i in range(3,max_depth+1): f.write("%-4d" % rsl.count(i)+' ') # 3r,4r,5r,...,mr
+    # print number of atoms with two neighbors and in six fold ring
+    f.write("%-4d" % len(n2r6)+' ')
 
     if chainbool:
       count = 0
@@ -717,6 +812,19 @@ def loadxyz(filename):
     file.close()
     max_radius = max(radius[t1] for t1 in alltypes)
     return data,max_radius
+
+def minimum_image(vec,box):
+   if abs(vec[0])>box[0]/2:
+     if vec[0] < 0.0: vec[0] += box[0];
+     else: vec[0] -= box[0]
+   if abs(vec[1])>box[1]/2:
+     if vec[1] < 0.0: vec[1] += box[1];
+     else: vec[1] -= box[1]
+   if abs(vec[2])>box[2]/2:
+     if vec[2] < 0.0: vec[2] += box[2];
+     else: vec[2] -= box[2]
+   return vec
+   
 
 class progressbar:
   def __init__(self,minlen=10,symbol='-'):
