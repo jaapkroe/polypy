@@ -45,8 +45,9 @@ parser.add_argument("-g", "--cluster_rings", dest="clusterbool", action="store_t
 parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (ring-size), 2 (chains), 3 (coordination)")
 parser.add_argument("-b", "--pbc", action="store_true", help="use periodic boundary conditions, cell size on 2nd line of xyz-file as Lx Ly Lz")
 parser.add_argument("-l", "--ringbool", action="store_false", help="switch on/off: search for rings/loops (default=true)")
-parser.add_argument("-p", "--impropbool", action="store_true", help="calculate improper angles of atoms with more than 3 neighbors (default=false)")
-parser.add_argument("--n2r6", action="store_true", help="calculate number of atoms with more than 2 neighbors in a hexagon (default=false)")
+parser.add_argument("-p", "--impropbool", action="store_true", help="calculate improper angles (default=false)")
+parser.add_argument("--improplimit", type=float, default=0, help="lower limit for counting improper angles in simple NFO (default=0)")
+parser.add_argument("--n2r6", action="store_true", help="calculate number of \"SP\"-atoms (two neighbors in a hexagon) (default=false)")
 parser.add_argument("-f", "--floodfill", action="store_true", help="find disconnected subgraphs (default=false)")
 parser.add_argument("-o", "--origin", type=int, default=-1, help="find neighbor-shells of atom i (disabled if < 0)")
 parser.add_argument("-i", "--info", action="store_false", help="write nfo file (default=true)")
@@ -54,8 +55,7 @@ parser.add_argument("--stride", default=1, type=int, help="stride xyz file")
 parser.add_argument("-s", "--simple", action="store_true",help="print simple nfo file, prints only ring counts (default=false)")
 parser.add_argument("-x", "--franzblau", action="store_false", help="removed rings that are not shortest path rings (default=true)")
 parser.add_argument('--verbose', '-v', action='count')
-#parser.add_argument('--version', action='version', version="%(prog)s %s"%polypy_version)
-
+parser.add_argument('--version', action='version', version="%(prog)s version " + str(polypy_version))
 ######### MAIN #########
 def main():
   args = parser.parse_args()
@@ -83,6 +83,7 @@ def main():
       dstrings = d if d>2 else 10
       for m in range(3,dstrings+1): nfo_file.write(" %3ir" % int(m))
       if args.n2r6: nfo_file.write("   2n6r")
+      if args.impropbool: nfo_file.write("  #IMPR")
       if args.chainbool: nfo_file.write("  nc  lc")
       nfo_file.write("\n")
   
@@ -624,7 +625,7 @@ class graph:
         file.write('graphics top triangle {%.3f %.3f %.3f} {%.3f %.3f %.3f} {%.3f %.3f %.3f}\n'%\
               (x[0],x[1],x[2],y[0],y[1],y[2],c[0],c[1],c[2]))
 
-  def print_info(g, f, options):
+  def print_info(g, f, args):
     f.write('=========== Statistics:\n')
     
     # element neighbor list
@@ -632,7 +633,7 @@ class graph:
     nl = [sorted([n.id for n in v.neighbors]) for v in g.vertices]
 
     #### SUMMARIZED DATA ####
-    if options.ringbool:
+    if args.ringbool:
       # ring list: 
       # - ring element sorting by id [5,7,1] -> [1,5,7] 
       # - ring list sorting by size
@@ -650,7 +651,7 @@ class graph:
         c = rsl.count(i) # number of times a ring of size i is found
         if c != 0: f.write(str(c)+' loops of size '+str(i)+'\n')
       f.write('\n')
-    if options.chainbool:
+    if args.chainbool:
       chains = sorted(g.chains, key=lambda x: (len(x),x[0])) 
       csl = [len(c) for c in chains] 
       # all chains and their size
@@ -658,7 +659,7 @@ class graph:
         c = csl.count(i) # number of times a ring of size i is found
         if c != 0: f.write(str(c)+' chains of size '+str(i)+'\n')
       f.write('\n')
-    if options.clusterbool:
+    if args.clusterbool:
       typelist = [c['type'] for c in g.clusters]
       clusdict = {} 
       for t in typelist: 
@@ -667,7 +668,7 @@ class graph:
           f.write(str(clusdict[t])+" clusters of type %s\n" % t)
       f.write('\n')
 
-    if options.floodfill:
+    if args.floodfill:
       subgraphdict = {}
       for v in g.vertices:
         if v.subgraph in subgraphdict:
@@ -689,7 +690,7 @@ class graph:
         f.write(str(c)+' elements with '+str(i)+' neighbor\n')
       else:
         f.write(str(c)+' elements with '+str(i)+' neighbors\n')
-    if options.n2r6: 
+    if args.n2r6: 
         # get elements with only 2 neighbors which are in a ring 
         # (they are not sp, they are sp2) 
         n2r6 = []
@@ -705,7 +706,7 @@ class graph:
 
     #### EXTENSIVE DATA ####
     f.write('=========== Extensive data:\n')
-    if options.ringbool:
+    if args.ringbool:
       # list of rings (rl) with all unique rings, sorted by size and id
       f.write('(size) [ring elements]:\n')
       for l in rl:
@@ -715,7 +716,7 @@ class graph:
         f.write("]\n")
       f.write("\n")
     
-    if options.chainbool:
+    if args.chainbool:
       f.write('/size/ [chain elements]:\n')
       for c in chains:
         f.write('/'+str(len(c))+'/ ')
@@ -724,7 +725,7 @@ class graph:
         f.write('\n')
       f.write('\n')
 
-    if options.clusterbool:
+    if args.clusterbool:
       f.write('<size> type [cluster elements]:\n')
       for i,c in enumerate(g.clusters):
         f.write("<%d> %s [" % (i,c['type']))
@@ -733,7 +734,7 @@ class graph:
         f.write("]\n")
       f.write('\n')
       
-    if options.impropbool:
+    if args.impropbool:
       f.write('{central element (j)} [plane elements] (theta_ijkl,theta_kjli,theta_ljik) <theta>:\n')
       for v,pl in g.improper:
         for npl,theta in pl:
@@ -788,6 +789,14 @@ class graph:
                 n2r6.append(v.id) 
         # print number of atoms with two neighbors and in six fold ring
         f.write("%-4d" % len(n2r6)+' ')
+    if args.impropbool:
+        # counter number of improper angles exceeding argument
+        nimproper = 0
+        for v,pl in g.improper:
+            for npl,theta in pl:
+                if sum(theta)/len(theta) > args.improplimit: nimproper+=1
+        f.write("%-4d" % nimproper)
+
 
     if args.chainbool:
       count = 0
