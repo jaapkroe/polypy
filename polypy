@@ -689,6 +689,18 @@ class graph:
         f.write(str(c)+' elements with '+str(i)+' neighbor\n')
       else:
         f.write(str(c)+' elements with '+str(i)+' neighbors\n')
+    if options.n2r6: 
+        # get elements with only 2 neighbors which are in a ring 
+        # (they are not sp, they are sp2) 
+        n2r6 = []
+        for v in g.vertices:
+          if v.nn == 2:
+            #check if atom is in 6r
+            for l in rl:
+              if v.id in l and len(l) == 6:
+                n2r6.append(v.id) 
+        # print number of atoms with two neighbors and in six fold ring
+        f.write('%s elements with 2 neighbors are in loop of size 6\n' % len(n2r6))
 
 
     #### EXTENSIVE DATA ####
