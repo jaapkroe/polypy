@@ -8,7 +8,7 @@ It can be used for example to identify defects in crystal structures or molecule
 - Shortest-path ring search using Franzblau statistics [Phys. Rev. B 44, 4925]
 - Generate xyz files with atoms marked for visualization of rings
 - Detect subgraphs; defect clusters; atom chains; neighbor shells
-- calculates all improper dihedrals of connected atoms with more than 3 neighbors
+- Calculates improper dihedrals of atoms with more than 3 neighbors
 - Progress bars!
 
 ## Obtain code
