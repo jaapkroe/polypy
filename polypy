@@ -42,7 +42,8 @@ parser.add_argument(dest="geo",type=str,help="input xyz file")
 parser.add_argument("-c", "--chainbool", action="store_true", help="identify chains of atoms: defined as a connected line of 2n-atoms (default=false)")
 parser.add_argument("-d", "--depth", type=int, default=7, help="maximum ring size, computation time is O(x^d), where x is average coordination. (default=7), note: 0=infinite depth")
 parser.add_argument("-g", "--cluster_rings", dest="clusterbool", action="store_true", help="group/cluster connected rings (default=false)")
-parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (neighbors), 2 (ring-size), 3 (chains)")
+parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (neighbors), 2 (ring-size), 3 (chains), 4, 5, 6 (same but in PDB format instead of XYZ)")
+parser.add_argument("--polygon", action="store_true", help="write polygon file for 3D visualization")
 parser.add_argument("-b", "--pbc", action="store_true", help="use periodic boundary conditions, cell size on 2nd line of xyz-file as Lx Ly Lz")
 parser.add_argument("-l", "--ringbool", action="store_false", help="switch on/off: search for rings/loops (default=true)")
 parser.add_argument("-p", "--impropbool", action="store_true", help="calculate improper angles (default=false)")
@@ -88,7 +89,7 @@ def main():
       nfo_file.write("\n")
   
   # evaluate data
-  if args.mark: marked_file=open(basename+'_marked.xyz','w') # remove old data
+  if args.mark>0 and args.mark<=3: marked_file=open(basename+'_marked.xyz','w') # remove old data
   for i,snap in enumerate(data):
     if not i%args.stride==0: continue
     if(nframes>1): print("FRAME %d / %d"%(i,nframes))
@@ -106,11 +107,12 @@ def main():
     if args.impropbool: g.improp(args.pbc)
 
     if args.mark:
-      if args.mark==1: g.mark_neighbors()             # mark atoms of different coordination by atom type
-      if args.mark==2: g.mark_rings()                 # mark elements of ring by different atom type
-      if args.mark==3: g.mark_chains()                # mark atoms in chains as Helium (He)
-      g.writexyz(marked_file,"-- marked xyz file --")
-      g.writepolygons(open('polygons.dat','w'))
+      if args.mark==1 or args.mark==4: g.mark_neighbors(args.mark)    # mark atoms of different coordination by atom type
+      if args.mark==2 or args.mark==5: g.mark_rings(args.mark)        # mark elements of ring by different atom type
+      if args.mark==3 or args.mark==6: g.mark_chains(args.mark)       # mark atoms in chains as Helium (He)
+      if args.mark>3:   g.writepdb(open(basename+'_marked.pdb','w'),args.pbc,"-- marked pdb file --")
+      elif args.mark>0: g.writexyz(marked_file,"-- marked xyz file --")
+      if args.polygon: g.writepolygons(open('polygons.dat','w'))
 
     if args.simple:
       nfo_file.write("%-6d" % i+' ')
@@ -582,34 +584,46 @@ class graph:
           Q.append({'v':n, 'd':t['d']+1,'i':n.id})
     return neighbors
 
-  def mark_rings(g):
-    # reset previous markings to C
-    for v in g.vertices: v.atom = elements[0]
+  def mark_rings(g,mark):
+    # initialize markings 
+    if mark<=3:
+        for v in g.vertices: v.atom = elements[0]
     # ring list (set->list), sort inverted by ring size 7,7,7,...,6,6,6...,5,5,...
-    #rl = sorted([list(r) for r in g.rings],cmp=lambda y,x: cmp(len(x), len(y)))
     rl = sorted(g.rings, key = lambda r: len(r))
-    # this method has some ambiguity because one atom can be part of multiple rings
+    # this has some ambiguity because one atom can be part of multiple rings
     # rings are marked according to the order in 'rl', which is based on size (...,8,7,6,5,4,3)
     for r in rl:
       for v in r:
         # label size by periodic table element
-        if len(r) < len(elements): v.atom = elements[len(r)]
-        else: v.atom = elements[0]
+        if mark>3: v.mark = len(r)
+        else: 
+            if len(r) < len(elements): v.atom = elements[len(r)]
+            else: v.atom = elements[0]
 
-  def mark_neighbors(g):
+  def mark_neighbors(g,mark):
     # mark atoms by number of neighbors:
     for v in g.vertices:
-      v.atom = elements[v.nn+3] # +3 so that graphitic atoms (3nn) are marked as carbon
+      if mark>3: v.mark = v.nn
+      else: v.atom = elements[v.nn+3] # +3 so that graphitic atoms (3nn) are marked as carbon
  
-  def mark_chains(g):
+  def mark_chains(g,mark):
     for v in g.vertices:
       if v.nn == 2:
-        v.atom = "He" # so that chain atoms (2nn) are marked as He, not to interfere with ring-marking
+        if mark>3: v.mark=1
+        else: v.atom = "He" # so that chain atoms (2nn) are marked as He, not to interfere with ring-marking
+      else:
+        if mark>3: v.mark=0
     
   def writexyz(g, file, header):
     file.write("%5i\n" % g.size) # header1 (# atoms)
     file.write(header+"\n")
     for v in g.vertices: file.write("%2s %12.8f %12.8f %12.8f\n" % (v.atom, v.pos[0], v.pos[1], v.pos[2]))
+
+  def writepdb(g, file, pbc, header):
+    if pbc: file.write("REMARK\nCRYST1%9.3f%9.3f%9.3f  90.00  90.00  90.00 P 1           1\n"%(g.box[0],g.box[1],g.box[2]))
+    else : file.write("REMARK\nCRYST1%9.3f%9.3f%9.3f  90.00  90.00  90.00 P 1           1\n"%(100,100,100))
+    for i,v in enumerate(g.vertices):
+        file.write("ATOM%7d %2s   XXX     1    %8.3f%8.3f%8.3f  %8.3f %8.3f\n"%(i,v.atom,v.pos[0],v.pos[1],v.pos[2],v.mark,v.mark))
 
   def writepolygons(g, file):
     for r in g.rings:
