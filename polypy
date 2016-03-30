@@ -42,7 +42,7 @@ parser.add_argument(dest="geo",type=str,help="input xyz file")
 parser.add_argument("-c", "--chainbool", action="store_true", help="identify chains of atoms: defined as a connected line of 2n-atoms (default=false)")
 parser.add_argument("-d", "--depth", type=int, default=7, help="maximum ring size, computation time is O(x^d), where x is average coordination. (default=7), note: 0=infinite depth")
 parser.add_argument("-g", "--cluster_rings", dest="clusterbool", action="store_true", help="group/cluster connected rings (default=false)")
-parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (ring-size), 2 (chains), 3 (coordination)")
+parser.add_argument("-m", "--mark", type=int, default=0, help="determine output marking criterium : 0 (none, default), 1 (neighbors), 2 (ring-size), 3 (chains)")
 parser.add_argument("-b", "--pbc", action="store_true", help="use periodic boundary conditions, cell size on 2nd line of xyz-file as Lx Ly Lz")
 parser.add_argument("-l", "--ringbool", action="store_false", help="switch on/off: search for rings/loops (default=true)")
 parser.add_argument("-p", "--impropbool", action="store_true", help="calculate improper angles (default=false)")
@@ -107,7 +107,7 @@ def main():
 
     if args.mark:
       if args.mark==1: g.mark_neighbors()             # mark atoms of different coordination by atom type
-      if args.mark==2: g.mark_rings(mark)             # mark elements of ring by different atom type
+      if args.mark==2: g.mark_rings()                 # mark elements of ring by different atom type
       if args.mark==3: g.mark_chains()                # mark atoms in chains as Helium (He)
       g.writexyz(marked_file,"-- marked xyz file --")
       g.writepolygons(open('polygons.dat','w'))
@@ -582,7 +582,7 @@ class graph:
           Q.append({'v':n, 'd':t['d']+1,'i':n.id})
     return neighbors
 
-  def mark_rings(g, mark):
+  def mark_rings(g):
     # reset previous markings to C
     for v in g.vertices: v.atom = elements[0]
     # ring list (set->list), sort inverted by ring size 7,7,7,...,6,6,6...,5,5,...
@@ -593,7 +593,7 @@ class graph:
     for r in rl:
       for v in r:
         # label size by periodic table element
-        if len(r) < len(elements): v.atom = elements(len(r))
+        if len(r) < len(elements): v.atom = elements[len(r)]
         else: v.atom = elements[0]
 
   def mark_neighbors(g):
