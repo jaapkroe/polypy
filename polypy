@@ -54,6 +54,7 @@ parser.add_argument("-o", "--origin", type=int, default=-1, help="find neighbor-
 parser.add_argument("-i", "--info", action="store_false", help="write nfo file (default=true)")
 parser.add_argument("--stride", default=1, type=int, help="stride xyz file")
 parser.add_argument("-s", "--simple", action="store_true",help="print simple nfo file, prints only ring counts (default=false)")
+parser.add_argument("-q", "--quiet", action="store_true",help="suppress progress bars (default=false)")
 parser.add_argument("-x", "--franzblau", action="store_false", help="removed rings that are not shortest path rings (default=true)")
 parser.add_argument('--verbose', '-v', action='count')
 parser.add_argument('--version', action='version', version="%(prog)s version " + str(polypy_version))
@@ -93,7 +94,8 @@ def main():
   for i,snap in enumerate(data):
     if not i%args.stride==0: continue
     if(nframes>1): print("FRAME %d / %d"%(i,nframes))
-    g = graph(snap, progressbar(25))                  # initialize a graph based on data
+    if args.quiet: g = graph(snap)                    # initialize a graph based on data
+    else: g = graph(snap, progressbar(25))
     if args.pbc: g.box = snap['cell']                 # set cell size
     g.connect_sparse(max_radius,args.pbc)             # connect graph (based on atomic radii)
 
@@ -153,7 +155,7 @@ class graph:
     g.size = 0
     if data:
       for i,coords in enumerate(data['coords']):
-        v = vertex(i,coords)
+        v = vertex(i,coords,data['types'][i])
         g.vertices.append(v)
         g.size = data['size']
     g.chains = []
@@ -217,7 +219,6 @@ class graph:
     g.max_radius = max_radius
 
     # precalculate where possible
-    #rmax2 = max_radius*max_radius
     inv_numtotal = 1./numtotal
 
     # progress counter to prevent unnecessary progress writes
@@ -593,6 +594,7 @@ class graph:
     # this has some ambiguity because one atom can be part of multiple rings
     # rings are marked according to the order in 'rl', which is based on size (...,8,7,6,5,4,3)
     for r in rl:
+      if len(r)==6: continue
       for v in r:
         # label size by periodic table element
         if mark>3: v.mark = len(r)
@@ -623,7 +625,7 @@ class graph:
     if pbc: file.write("REMARK\nCRYST1%9.3f%9.3f%9.3f  90.00  90.00  90.00 P 1           1\n"%(g.box[0],g.box[1],g.box[2]))
     else : file.write("REMARK\nCRYST1%9.3f%9.3f%9.3f  90.00  90.00  90.00 P 1           1\n"%(100,100,100))
     for i,v in enumerate(g.vertices):
-        file.write("ATOM%7d %2s   XXX     1    %8.3f%8.3f%8.3f  %8.3f %8.3f\n"%(i,v.atom,v.pos[0],v.pos[1],v.pos[2],v.mark,v.mark))
+        file.write("ATOM%7d %2s   XXX     1    %8.3f%8.3f%8.3f%6.2f%6.2f\n"%(i,v.atom,v.pos[0],v.pos[1],v.pos[2],v.nn,v.mark))
 
   def writepolygons(g, file):
     for r in g.rings:
