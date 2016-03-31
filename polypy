@@ -64,9 +64,9 @@ def main():
   starttime = time.time()
   basename = args.geo[:-4]
   d = args.depth
-  print("Starting polypy %s: file = %s, depth = %d" %(polypy_version, args.geo, d))
+  if args.verbose: print("Starting polypy %s: file = %s, depth = %d" %(polypy_version, args.geo, d))
   data,max_radius = loadxyz(args.geo) # load data
-  print("Data loaded from %s : max atomic radius = %f "%(args.geo,max_radius))
+  if args.verbose: print("Data loaded from %s : max atomic radius = %f "%(args.geo,max_radius))
   nframes = len(data) # number of frames
 
   if args.info or args.simple:
@@ -121,7 +121,7 @@ def main():
       g.print_simple_info(nfo_file,d,args)            # print info to file
     elif args.info: g.print_info(nfo_file,args)       # print extended info to file
 
-  print("Finished in %.2f seconds."%(time.time()-starttime))
+  if args.verbose: sys.stderr.write("Finished in %.2f seconds.\n"%(time.time()-starttime))
   return 0
 ####### END MAIN ########
 
@@ -305,10 +305,10 @@ class graph:
 
   def shells(g, origin, max_depth):
       o = g.vertices[origin]
-      print("searching for nth neighbors of (%s)"%o)
+      print("# nth neighbors of (%s)"%o)
       oneighbors = g.search_from_origin(o,max_depth)
       for d in oneighbors:
-        sys.stdout.write("[n = %d] " % d)
+        sys.stdout.write("[ n = %d ] " % d)
         for v in sorted(oneighbors[d], key = lambda x : x.id):
           sys.stdout.write("%d "%(v.id+1))
         sys.stdout.write("\n")
@@ -668,7 +668,7 @@ class graph:
         if c != 0: f.write(str(c)+' loops of size '+str(i)+'\n')
       f.write('\n')
     if args.chainbool:
-      chains = sorted(g.chains, key=lambda x: (len(x),x[0])) 
+      chains = sorted(g.chains, key=lambda x: (len(x),x[0].id)) 
       csl = [len(c) for c in chains] 
       # all chains and their size
       for i in range(max(csl+[0])+1): # i=0,1,2,...,max(csl)
