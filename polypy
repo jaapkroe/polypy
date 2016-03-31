@@ -64,9 +64,9 @@ def main():
   starttime = time.time()
   basename = args.geo[:-4]
   d = args.depth
-  if args.verbose: print("Starting polypy %s: file = %s, depth = %d" %(polypy_version, args.geo, d))
+  if args.verbose: sys.stderr.write("Starting polypy %s: file = %s, depth = %d" %(polypy_version, args.geo, d))
   data,max_radius = loadxyz(args.geo) # load data
-  if args.verbose: print("Data loaded from %s : max atomic radius = %f "%(args.geo,max_radius))
+  if args.verbose: sys.stderr.write("Data loaded from %s : max atomic radius = %f "%(args.geo,max_radius))
   nframes = len(data) # number of frames
 
   if args.info or args.simple:
@@ -93,7 +93,7 @@ def main():
   if args.mark>0 and args.mark<=3: marked_file=open(basename+'_marked.xyz','w') # remove old data
   for i,snap in enumerate(data):
     if not i%args.stride==0: continue
-    if(nframes>1): print("FRAME %d / %d"%(i,nframes))
+    if(nframes>1): sys.stderr.write("FRAME %d / %d"%(i,nframes))
     if args.quiet: g = graph(snap)                    # initialize a graph based on data
     else: g = graph(snap, progressbar(25))
     if args.pbc: g.box = snap['cell']                 # set cell size
@@ -305,7 +305,7 @@ class graph:
 
   def shells(g, origin, max_depth):
       o = g.vertices[origin]
-      print("# nth neighbors of (%s)"%o)
+      sys.stdout.write("# nth neighbors of (%s)"%o)
       oneighbors = g.search_from_origin(o,max_depth)
       for d in oneighbors:
         sys.stdout.write("[ n = %d ] " % d)
