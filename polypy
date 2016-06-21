@@ -51,6 +51,7 @@ parser.add_argument("--improplimit", type=float, default=0, help="lower limit fo
 parser.add_argument("--n2r6", action="store_true", help="calculate number of \"SP\"-atoms (two neighbors in a hexagon) (default=false)")
 parser.add_argument("-f", "--floodfill", action="store_true", help="find disconnected subgraphs (default=false)")
 parser.add_argument("-o", "--origin", type=int, default=-1, help="find neighbor-shells of atom i (disabled if < 0)")
+parser.add_argument("--connect", type=str, help="define explicit connections, file-format: one line per atom, defining all neighbors for this atom (indices run from 0 to n-1)")
 parser.add_argument("-i", "--info", action="store_false", help="write nfo file (default=true)")
 parser.add_argument("--stride", default=1, type=int, help="stride xyz file")
 parser.add_argument("-s", "--simple", action="store_true",help="print simple nfo file, prints only ring counts (default=false)")
@@ -97,7 +98,8 @@ def main():
     if args.quiet: g = graph(snap)                    # initialize a graph based on data
     else: g = graph(snap, progressbar(25))
     if args.pbc: g.box = snap['cell']                 # set cell size
-    g.connect_sparse(max_radius,args.pbc)             # connect graph (based on atomic radii)
+    if args.connect: g.connect_file(args.connect)     # read connections from file
+    else: g.connect_sparse(max_radius,args.pbc)       # connect graph (based on atomic radii)
 
     if args.origin > -1: g.shells(args.origin,d)      # print neighbor shells
     if args.ringbool: 
@@ -163,6 +165,23 @@ class graph:
     g.path = []
     g.improper = []
     g.progress = progress
+
+  def connect_file(g, filename):
+    with open(filename,'r') as f:
+      for line in f:
+        indices = [ int(index) for index in line.split() ]
+        i = indices[0]
+        if i>=len(g.vertices) : sys.exit("ERROR index out of range : "+str(i))
+        v = g.vertices[i]
+        for j in indices[1:]:
+            if j>=len(g.vertices) : sys.exit("ERROR index out of range : "+str(j))
+            n = g.vertices[j]
+            if n not in v.neighbors: 
+                v.neighbors.append(n)
+                v.nn += 1
+    for v in g.vertices: # make a backup
+      for n in v.neighbors:
+        v.neighborscopy.append(n)
 
   def connect_sparse(g, max_radius, pbc):
     ''' 
