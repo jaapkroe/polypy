@@ -1,5 +1,5 @@
 #!/usr/bin/python
-polypy_version=1.415
+polypy_version=1.416
 import sys, os, re, time, string, argparse, math, itertools
 from copy import copy
 ''' polypy -- python program to calculate rings in a graph, using Franzblau statistics
